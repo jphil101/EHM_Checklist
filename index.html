@@ -95,7 +95,15 @@
         import { getFirestore, doc, setDoc, updateDoc, onSnapshot, collection, query, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         // --- Configuration ---
-        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+        const firebaseConfig = {
+        apiKey: "AIzaSyDeCUs-MEZKDjrQWolw3zU0sf8GOf5AfN0",
+        authDomain: "hower-checklist.firebaseapp.com",
+        projectId: "hower-checklist",
+        storageBucket: "hower-checklist.firebasestorage.app",
+        messagingSenderId: "504371438413",
+        appId: "1:504371438413:web:724c1dbdc6b39b7b5c0d04",
+        measurementId: "G-W22PQ56REL"
+        };
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-checklist-app';
 
         // --- Priority Matrix ---

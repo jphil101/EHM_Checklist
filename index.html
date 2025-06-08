@@ -58,7 +58,14 @@
              <!-- Sections will be added here -->
         </main>
         
-        <footer class="text-center mt-12">
+        <footer class="text-center mt-12 space-y-4">
+            <div>
+                 <label for="csv-import-input" class="cursor-pointer inline-block bg-green-600 text-white font-semibold py-2 px-5 rounded-lg shadow-md hover:bg-green-700 transition-colors duration-300">
+                    Import Tasks from CSV
+                </label>
+                <input type="file" id="csv-import-input" accept=".csv" class="hidden">
+                <p id="import-status" class="text-sm text-gray-600 mt-2"></p>
+            </div>
             <button id="logout-btn" class="text-sm text-gray-500 hover:text-red-600 underline">Switch to a different checklist</button>
         </footer>
     </div>
@@ -79,7 +86,6 @@
         appId: "1:504371438413:web:724c1dbdc6b39b7b5c0d04",
         measurementId: "G-W22PQ56REL"
         };
-
         // --- Priority Matrix ---
         const priorityMatrix = {
             '1-1': { text: '1 - Critical', color: 'text-red-600' }, '1-2': { text: '2 - High', color: 'text-orange-600' }, '1-3': { text: '3 - Moderate', color: 'text-yellow-600' },
@@ -96,6 +102,8 @@
         const mainContentEl = document.getElementById('main-content');
         const logoutBtn = document.getElementById('logout-btn');
         const errorMessage = document.getElementById('error-message');
+        const csvImportInput = document.getElementById('csv-import-input');
+        const importStatus = document.getElementById('import-status');
 
 
         // --- Firebase Initialization ---
@@ -129,18 +137,14 @@
             localStorage.removeItem('checklistId');
             welcomeScreen.classList.remove('hidden');
             appScreen.classList.add('hidden');
-            mainContentEl.innerHTML = ''; // Clear main content to rebuild it on next login
+            mainContentEl.innerHTML = ''; 
         }
 
         function showApp(checklistId) {
             welcomeScreen.classList.add('hidden');
             appScreen.classList.remove('hidden');
             checklistNameDisplay.textContent = checklistId;
-            
-            // Build the main app structure
             buildAppStructure();
-
-            // Set up Firebase references and listeners
             tasksCollectionRef = collection(db, 'checklists', checklistId, 'tasks');
             setupListeners();
         }
@@ -171,7 +175,6 @@
                 </section>
             `;
             
-            // Re-bind events for newly created elements
             document.getElementById('add-task-btn').addEventListener('click', handleAddTask);
             document.getElementById('ongoing-header').addEventListener('click', (e) => toggleSection(e.currentTarget, document.getElementById('ongoing-tasks-container')));
             document.getElementById('completed-header').addEventListener('click', (e) => toggleSection(e.currentTarget, document.getElementById('completed-tasks-container')));
@@ -265,6 +268,55 @@
         async function handleDeleteTask(taskId) {
             if (confirm("Are you sure?")) { await deleteDoc(doc(tasksCollectionRef, taskId)); }
         }
+
+        function handleCsvImport(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            importStatus.textContent = 'Importing...';
+            const reader = new FileReader();
+
+            reader.onload = async (e) => {
+                const text = e.target.result;
+                const lines = text.split('\n').filter(line => line.trim() !== ''); // Read lines, ignore empty ones
+
+                if (lines.length === 0) {
+                    importStatus.textContent = 'CSV file is empty or invalid.';
+                    return;
+                }
+                
+                try {
+                    const batch = writeBatch(db);
+                    lines.forEach(line => {
+                        // Assuming the first column is the title. Handles commas in titles if quoted.
+                        const title = line.split(',')[0].trim().replace(/"/g, ''); 
+                        if (title) {
+                            const newDocRef = doc(tasksCollectionRef);
+                            batch.set(newDocRef, {
+                                title: title,
+                                urgency: '3',
+                                impact: '3',
+                                priority: '5 - Planning',
+                                status: 'ongoing',
+                                createdAt: new Date().toISOString(),
+                                completedAt: null
+                            });
+                        }
+                    });
+                    await batch.commit();
+                    importStatus.textContent = `Successfully imported ${lines.length} tasks!`;
+                } catch (error) {
+                    console.error("Error importing tasks: ", error);
+                    importStatus.textContent = 'Error during import. Check console.';
+                }
+
+                // Clear status message after a few seconds
+                setTimeout(() => { importStatus.textContent = ''; }, 5000);
+            };
+
+            reader.readAsText(file);
+            event.target.value = ''; // Reset file input
+        }
         
         // --- Initial Load ---
         async function main() {
@@ -279,6 +331,7 @@
 
             loadChecklistBtn.addEventListener('click', handleLoadChecklist);
             logoutBtn.addEventListener('click', handleLogout);
+            csvImportInput.addEventListener('change', handleCsvImport);
 
             const savedChecklistId = localStorage.getItem('checklistId');
             if (savedChecklistId) {

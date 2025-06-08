@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Priority Checklist</title>
+    <title>Syncable AI Checklist</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.7.77/Tone.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -11,7 +11,7 @@
         body {
             font-family: 'Inter', sans-serif;
         }
-        .task-item {
+        .task-item, .welcome-screen {
             transition: all 0.5s ease-in-out;
         }
         .toggle-arrow {
@@ -20,79 +20,65 @@
         .collapsed .toggle-arrow {
             transform: rotate(-90deg);
         }
-        /* Animation for when a task is completed */
         @keyframes complete-animation {
             0% { background-color: #fff; transform: scale(1); }
-            50% { background-color: #dcfce7; transform: scale(1.02); } /* Light green flash */
+            50% { background-color: #dcfce7; transform: scale(1.02); }
             100% { opacity: 0; transform: scale(1); }
         }
         .task-item.completing {
             animation: complete-animation 0.6s ease-in-out forwards;
         }
+        .spinner {
+            border: 2px solid rgba(0, 0, 0, 0.1);
+            border-left-color: #4f46e5;
+            border-radius: 50%;
+            width: 16px;
+            height: 16px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
     </style>
 </head>
 <body class="bg-gray-100 text-gray-800">
 
-    <div id="app" class="max-w-4xl mx-auto p-4 md:p-8">
-        <header class="text-center mb-8">
-            <h1 class="text-4xl font-bold text-gray-900">Priority Checklist</h1>
-            <p class="text-gray-600 mt-2">Organize your tasks with an Eisenhower Matrix approach.</p>
-        </header>
+    <!-- Welcome/Setup Screen -->
+    <div id="welcome-screen" class="max-w-md mx-auto p-8 text-center mt-16 bg-white rounded-lg shadow-lg">
+        <h1 class="text-3xl font-bold text-gray-900 mb-2">Welcome!</h1>
+        <p class="text-gray-600 mb-6">Create a new checklist or load an existing one to sync across devices.</p>
         
-        <div id="loading" class="text-center py-10">
-            <p class="text-lg text-gray-600">Loading your tasks...</p>
+        <div class="space-y-4">
+            <input type="text" id="checklist-name-input" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder="Enter a secret checklist name...">
+            <p id="error-message" class="text-red-500 text-sm hidden"></p>
+            <button id="load-checklist-btn" class="w-full bg-blue-600 text-white font-semibold py-3 px-4 rounded-lg shadow-md hover:bg-blue-700 transition-colors duration-300">
+                Create or Load Checklist
+            </button>
         </div>
+        <p class="text-xs text-gray-500 mt-4">This name is your key. Make it memorable and unique. Anyone with this name can access your list.</p>
+    </div>
 
-        <main id="main-content" class="hidden">
-            <!-- Ongoing Tasks Section -->
-            <section class="mb-8">
-                <div id="ongoing-header" class="flex justify-between items-center cursor-pointer bg-white p-4 rounded-lg shadow-sm">
-                    <h2 class="text-2xl font-semibold">Ongoing Tasks</h2>
-                    <svg class="toggle-arrow w-6 h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
-                </div>
-                <div id="ongoing-tasks-container" class="mt-2">
-                    <!-- Column Headers -->
-                    <div id="tasks-header" class="flex items-center gap-3 px-3 py-2 text-sm font-semibold text-gray-500 border-b-2 border-gray-200">
-                        <div class="h-5 w-5 flex-shrink-0"></div> <!-- Checkbox placeholder -->
-                        <div class="flex-shrink-0 w-28">Urgency</div>
-                        <div class="flex-shrink-0 w-28">Impact</div>
-                        <div class="w-28 flex-shrink-0 text-center">Priority</div>
-                        <div class="flex-grow">Task Title</div>
-                        <div class="w-6 h-6 flex-shrink-0"></div> <!-- Delete button placeholder -->
-                    </div>
-                    <ul id="ongoing-tasks-list" class="space-y-2 pt-2">
-                        <!-- Tasks will be injected here by JavaScript -->
-                    </ul>
-                    <button id="add-task-btn" class="mt-4 w-full bg-blue-600 text-white font-semibold py-3 px-4 rounded-lg shadow-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors duration-300">
-                        + Add New Task
-                    </button>
-                </div>
-            </section>
+    <!-- Main Application -->
+    <div id="app" class="max-w-4xl mx-auto p-4 md:p-8 hidden">
+        <header class="text-center mb-8">
+            <h1 class="text-4xl font-bold text-gray-900">AI-Powered Checklist</h1>
+            <p class="text-gray-600 mt-2">Checklist Name: <strong id="checklist-name-display" class="select-all"></strong></p>
+        </header>
 
-            <!-- Completed Today Section -->
-            <section>
-                <div id="completed-header" class="flex justify-between items-center cursor-pointer bg-white p-4 rounded-lg shadow-sm collapsed">
-                    <h2 class="text-2xl font-semibold">Completed Today</h2>
-                    <svg class="toggle-arrow w-6 h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
-                </div>
-                <div id="completed-tasks-container" class="mt-2 hidden">
-                     <ul id="completed-tasks-list" class="space-y-2">
-                        <!-- Completed tasks will be injected here -->
-                    </ul>
-                </div>
-            </section>
+        <main id="main-content">
+             <!-- Sections will be added here -->
         </main>
         
-        <footer class="text-center mt-12 text-sm text-gray-500">
-            <p>Your User ID (for cross-device access): <strong id="user-id-display" class="select-all"></strong></p>
+        <footer class="text-center mt-12">
+            <button id="logout-btn" class="text-sm text-gray-500 hover:text-red-600 underline">Switch to a different checklist</button>
         </footer>
     </div>
 
     <script type="module">
         // Firebase Imports
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, setDoc, updateDoc, onSnapshot, collection, query, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, updateDoc, onSnapshot, collection, query, deleteDoc, writeBatch } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         // --- Configuration ---
         const firebaseConfig = {
@@ -104,248 +90,221 @@
         appId: "1:504371438413:web:724c1dbdc6b39b7b5c0d04",
         measurementId: "G-W22PQ56REL"
         };
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-checklist-app';
 
         // --- Priority Matrix ---
         const priorityMatrix = {
-            '1-1': { text: '1 - Critical', color: 'text-red-600' },
-            '1-2': { text: '2 - High', color: 'text-orange-600' },
-            '1-3': { text: '3 - Moderate', color: 'text-yellow-600' },
-            '2-1': { text: '2 - High', color: 'text-orange-600' },
-            '2-2': { text: '3 - Moderate', color: 'text-yellow-600' },
-            '2-3': { text: '4 - Low', color: 'text-green-600' },
-            '3-1': { text: '3 - Moderate', color: 'text-yellow-600' },
-            '3-2': { text: '4 - Low', color: 'text-green-600' },
-            '3-3': { text: '5 - Planning', color: 'text-blue-600' },
+            '1-1': { text: '1 - Critical', color: 'text-red-600' }, '1-2': { text: '2 - High', color: 'text-orange-600' }, '1-3': { text: '3 - Moderate', color: 'text-yellow-600' },
+            '2-1': { text: '2 - High', color: 'text-orange-600' }, '2-2': { text: '3 - Moderate', color: 'text-yellow-600' }, '2-3': { text: '4 - Low', color: 'text-green-600' },
+            '3-1': { text: '3 - Moderate', color: 'text-yellow-600' }, '3-2': { text: '4 - Low', color: 'text-green-600' }, '3-3': { text: '5 - Planning', color: 'text-blue-600' },
         };
 
         // --- DOM Elements ---
-        const loadingEl = document.getElementById('loading');
+        const welcomeScreen = document.getElementById('welcome-screen');
+        const appScreen = document.getElementById('app');
+        const checklistNameInput = document.getElementById('checklist-name-input');
+        const loadChecklistBtn = document.getElementById('load-checklist-btn');
+        const checklistNameDisplay = document.getElementById('checklist-name-display');
         const mainContentEl = document.getElementById('main-content');
-        const ongoingTasksList = document.getElementById('ongoing-tasks-list');
-        const completedTasksList = document.getElementById('completed-tasks-list');
-        const addTaskBtn = document.getElementById('add-task-btn');
-        const ongoingHeader = document.getElementById('ongoing-header');
-        const completedHeader = document.getElementById('completed-header');
-        const ongoingContainer = document.getElementById('ongoing-tasks-container');
-        const completedContainer = document.getElementById('completed-tasks-container');
-        const userIdDisplay = document.getElementById('user-id-display');
+        const logoutBtn = document.getElementById('logout-btn');
+        const errorMessage = document.getElementById('error-message');
+
 
         // --- Firebase Initialization ---
-        let app, db, auth, userId, tasksCollectionRef;
+        let app, db, auth, tasksCollectionRef;
         let localTasks = [];
 
         // --- Tone.js Sound Setup ---
         let synth;
         let audioReady = false;
-
         function setupAudio() {
             if (audioReady || typeof Tone === 'undefined') return;
             synth = new Tone.Synth().toDestination();
             audioReady = true;
             document.body.removeEventListener('click', setupAudio, true);
         }
-        // Start audio context on the first user click anywhere
         document.body.addEventListener('click', setupAudio, true);
-
-        async function initializeFirebase() {
-            if (Object.keys(firebaseConfig).length === 0) {
-                console.error("Firebase config is missing.");
-                loadingEl.textContent = "Error: Application is not configured correctly.";
+        
+        // --- App Logic ---
+        function handleLoadChecklist() {
+            const checklistId = checklistNameInput.value.trim();
+            if (checklistId.length < 5) {
+                errorMessage.textContent = "Checklist name must be at least 5 characters long.";
+                errorMessage.classList.remove('hidden');
                 return;
             }
-            app = initializeApp(firebaseConfig);
-            db = getFirestore(app);
-            auth = getAuth(app);
-            
-            onAuthStateChanged(auth, async (user) => {
-                if (user) {
-                    userId = user.uid;
-                    userIdDisplay.textContent = userId;
-                    tasksCollectionRef = collection(db, 'artifacts', appId, 'users', userId, 'tasks');
-                    setupListeners();
-                    loadingEl.style.display = 'none';
-                    mainContentEl.style.display = 'block';
-                } else {
-                     try {
-                        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                            await signInWithCustomToken(auth, __initial_auth_token);
-                        } else {
-                            await signInAnonymously(auth);
-                        }
-                    } catch (error) {
-                        console.error("Authentication failed:", error);
-                        loadingEl.textContent = "Error: Could not authenticate.";
-                    }
-                }
-            });
+            localStorage.setItem('checklistId', checklistId);
+            showApp(checklistId);
         }
         
-        function isSameDay(date1, date2) {
-            if (!date1 || !date2) return false;
-            const d1 = new Date(date1);
-            const d2 = new Date(date2);
-            return d1.getFullYear() === d2.getFullYear() &&
-                   d1.getMonth() === d2.getMonth() &&
-                   d1.getDate() === d2.getDate();
+        function handleLogout() {
+            localStorage.removeItem('checklistId');
+            welcomeScreen.classList.remove('hidden');
+            appScreen.classList.add('hidden');
+            mainContentEl.innerHTML = ''; // Clear main content to rebuild it on next login
         }
+
+        function showApp(checklistId) {
+            welcomeScreen.classList.add('hidden');
+            appScreen.classList.remove('hidden');
+            checklistNameDisplay.textContent = checklistId;
+            
+            // Build the main app structure
+            buildAppStructure();
+
+            // Set up Firebase references and listeners
+            tasksCollectionRef = collection(db, 'checklists', checklistId, 'tasks');
+            setupListeners();
+        }
+        
+        function buildAppStructure() {
+            mainContentEl.innerHTML = `
+                <section class="mb-8">
+                    <div id="ongoing-header" class="flex justify-between items-center cursor-pointer bg-white p-4 rounded-lg shadow-sm">
+                        <h2 class="text-2xl font-semibold">Ongoing Tasks</h2>
+                        <svg class="toggle-arrow w-6 h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                    </div>
+                    <div id="ongoing-tasks-container" class="mt-2">
+                        <div class="flex items-center gap-3 px-3 py-2 text-sm font-semibold text-gray-500 border-b-2 border-gray-200">
+                            <div class="h-5 w-5 flex-shrink-0"></div><div class="flex-shrink-0 w-28">Urgency</div><div class="flex-shrink-0 w-28">Impact</div><div class="w-28 flex-shrink-0 text-center">Priority</div><div class="flex-grow">Task Title</div><div class="w-14 h-6 flex-shrink-0"></div>
+                        </div>
+                        <ul id="ongoing-tasks-list" class="space-y-2 pt-2"></ul>
+                        <button id="add-task-btn" class="mt-4 w-full bg-blue-600 text-white font-semibold py-3 px-4 rounded-lg shadow-md hover:bg-blue-700"> + Add New Task </button>
+                    </div>
+                </section>
+                <section>
+                    <div id="completed-header" class="flex justify-between items-center cursor-pointer bg-white p-4 rounded-lg shadow-sm collapsed">
+                        <h2 class="text-2xl font-semibold">Completed Today</h2>
+                        <svg class="toggle-arrow w-6 h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                    </div>
+                    <div id="completed-tasks-container" class="mt-2 hidden">
+                         <ul id="completed-tasks-list" class="space-y-2"></ul>
+                    </div>
+                </section>
+            `;
+            
+            // Re-bind events for newly created elements
+            document.getElementById('add-task-btn').addEventListener('click', handleAddTask);
+            document.getElementById('ongoing-header').addEventListener('click', (e) => toggleSection(e.currentTarget, document.getElementById('ongoing-tasks-container')));
+            document.getElementById('completed-header').addEventListener('click', (e) => toggleSection(e.currentTarget, document.getElementById('completed-tasks-container')));
+        }
+        
+        function isSameDay(d1, d2) { return d1 && d2 && new Date(d1).toDateString() === new Date(d2).toDateString(); }
 
         function setupListeners() {
             onSnapshot(query(tasksCollectionRef), (snapshot) => {
                 const today = new Date();
-                const tasksFromDb = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                
-                localTasks = tasksFromDb.filter(task => {
-                    return task.status === 'ongoing' || (task.status === 'completed' && isSameDay(task.completedAt, today));
-                });
-                
+                localTasks = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
+                    .filter(task => task.status === 'ongoing' || (task.status === 'completed' && isSameDay(task.completedAt, today)));
                 renderTasks();
             });
-
-            addTaskBtn.addEventListener('click', handleAddTask);
-            ongoingHeader.addEventListener('click', () => toggleSection(ongoingHeader, ongoingContainer));
-            completedHeader.addEventListener('click', () => toggleSection(completedHeader, completedContainer));
         }
-
-        function toggleSection(header, container) {
-            header.classList.toggle('collapsed');
-            container.classList.toggle('hidden');
-        }
+        
+        function toggleSection(header, container) { header.classList.toggle('collapsed'); container.classList.toggle('hidden'); }
 
         function renderTasks() {
-            ongoingTasksList.innerHTML = '';
-            completedTasksList.innerHTML = '';
+            const ongoingList = document.getElementById('ongoing-tasks-list');
+            const completedList = document.getElementById('completed-tasks-list');
+            if(!ongoingList || !completedList) return;
+
+            ongoingList.innerHTML = '';
+            completedList.innerHTML = '';
 
             localTasks.sort((a, b) => {
-                if (a.status === 'ongoing' && b.status === 'ongoing') {
-                    const priorityA = (a.priority || '99').split(' ')[0];
-                    const priorityB = (b.priority || '99').split(' ')[0];
-                    return priorityA.localeCompare(priorityB);
-                }
-                if (a.status === 'completed' && b.status === 'completed') {
-                    return new Date(b.completedAt) - new Date(a.completedAt);
-                }
+                if (a.status === 'ongoing' && b.status === 'ongoing') { return (a.priority || '99').localeCompare(b.priority || '99'); }
+                if (a.status === 'completed' && b.status === 'completed') { return new Date(b.completedAt) - new Date(a.completedAt); }
                 return 0;
             });
             
             const ongoingTasks = localTasks.filter(t => t.status === 'ongoing');
             const completedTasks = localTasks.filter(t => t.status === 'completed');
 
-            if (ongoingTasks.length === 0) {
-                 ongoingTasksList.innerHTML = `<li class="text-center text-gray-500 py-4">All tasks are complete. Great job!</li>`;
-            } else {
-                ongoingTasks.forEach(task => ongoingTasksList.appendChild(createTaskElement(task)));
-            }
+            if (ongoingTasks.length === 0) { ongoingList.innerHTML = `<li class="text-center text-gray-500 py-4">All tasks are complete!</li>`; } 
+            else { ongoingTasks.forEach(task => ongoingList.appendChild(createTaskElement(task))); }
 
-            if (completedTasks.length === 0) {
-                 completedTasksList.innerHTML = `<li class="text-center text-gray-500 py-4">No tasks completed today.</li>`;
-            } else {
-                completedTasks.forEach(task => completedTasksList.appendChild(createTaskElement(task)));
-            }
+            if (completedTasks.length === 0) { completedList.innerHTML = `<li class="text-center text-gray-500 py-4">No tasks completed today.</li>`; }
+            else { completedTasks.forEach(task => completedList.appendChild(createTaskElement(task))); }
         }
 
         function createTaskElement(task) {
             const li = document.createElement('li');
             li.className = `task-item flex items-center gap-3 p-3 bg-white rounded-lg shadow-sm ${task.status === 'completed' ? 'opacity-70' : ''}`;
             li.dataset.id = task.id;
-
             const priority = priorityMatrix[`${task.urgency}-${task.impact}`] || { text: 'N/A', color: 'text-gray-500' };
-
             li.innerHTML = `
-                <input type="checkbox" ${task.status === 'completed' ? 'checked' : ''} class="h-5 w-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer flex-shrink-0">
-                
-                <div class="flex-shrink-0 w-28">
-                    <select class="urgency-select w-full bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-1.5" data-field="urgency">
-                        <option value="1" ${task.urgency == 1 ? 'selected' : ''}>High</option>
-                        <option value="2" ${task.urgency == 2 ? 'selected' : ''}>Medium</option>
-                        <option value="3" ${task.urgency == 3 ? 'selected' : ''}>Low</option>
-                    </select>
-                </div>
-
-                <div class="flex-shrink-0 w-28">
-                     <select class="impact-select w-full bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-1.5" data-field="impact">
-                        <option value="1" ${task.impact == 1 ? 'selected' : ''}>High</option>
-                        <option value="2" ${task.impact == 2 ? 'selected' : ''}>Medium</option>
-                        <option value="3" ${task.impact == 3 ? 'selected' : ''}>Low</option>
-                    </select>
-                </div>
-
+                <input type="checkbox" ${task.status === 'completed' ? 'checked' : ''} class="h-5 w-5 rounded border-gray-300 text-blue-600 cursor-pointer flex-shrink-0">
+                <div class="flex-shrink-0 w-28"><select class="urgency-select w-full bg-gray-50 border-gray-300 text-sm rounded-lg p-1.5" data-field="urgency"><option value="1" ${task.urgency == 1 ? 'selected' : ''}>High</option><option value="2" ${task.urgency == 2 ? 'selected' : ''}>Medium</option><option value="3" ${task.urgency == 3 ? 'selected' : ''}>Low</option></select></div>
+                <div class="flex-shrink-0 w-28"><select class="impact-select w-full bg-gray-50 border-gray-300 text-sm rounded-lg p-1.5" data-field="impact"><option value="1" ${task.impact == 1 ? 'selected' : ''}>High</option><option value="2" ${task.impact == 2 ? 'selected' : ''}>Medium</option><option value="3" ${task.impact == 3 ? 'selected' : ''}>Low</option></select></div>
                 <div class="priority-display font-semibold w-28 flex-shrink-0 text-center ${priority.color}">${priority.text}</div>
-                
                 <input type="text" value="${task.title}" class="task-title-input flex-grow bg-transparent focus:bg-gray-100 rounded p-1.5 outline-none ${task.status === 'completed' ? 'line-through' : ''}" placeholder="Enter task title...">
-                
-                <button class="delete-btn text-gray-400 hover:text-red-500 transition-colors flex-shrink-0">
-                    <svg class="w-6 h-6 p-0.5" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm4 0a1 1 0 012 0v6a1 1 0 11-2 0V8z" clip-rule="evenodd"></path></svg>
-                </button>
-            `;
-
+                <div class="flex items-center gap-1 flex-shrink-0 w-14">
+                    <button class="ai-btn text-gray-400 hover:text-indigo-500 p-0.5" title="✨ Generate Sub-tasks"><span class="icon">✨</span><span class="spinner hidden"></span></button>
+                    <button class="delete-btn text-gray-400 hover:text-red-500 p-0.5"><svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm4 0a1 1 0 012 0v6a1 1 0 11-2 0V8z" clip-rule="evenodd"></path></svg></button>
+                </div>`;
             li.querySelector('input[type="checkbox"]').addEventListener('change', (e) => handleToggleComplete(task.id, e.target.checked));
             li.querySelectorAll('select').forEach(sel => sel.addEventListener('change', (e) => handleUpdateTask(task.id, e.target.dataset.field, e.target.value)));
             li.querySelector('.task-title-input').addEventListener('blur', (e) => handleUpdateTask(task.id, 'title', e.target.value));
             li.querySelector('.delete-btn').addEventListener('click', () => handleDeleteTask(task.id));
-            
+            li.querySelector('.ai-btn').addEventListener('click', (e) => handleGenerateSubtasks(e.currentTarget, task.id, task.title));
             return li;
         }
 
         async function handleAddTask() {
-            const newDocRef = doc(tasksCollectionRef);
-            const newTask = {
-                title: '',
-                urgency: '3',
-                impact: '3',
-                priority: '5 - Planning',
-                status: 'ongoing',
-                createdAt: new Date().toISOString(),
-                completedAt: null
-            };
-            await setDoc(newDocRef, newTask);
+            await setDoc(doc(tasksCollectionRef), { title: '', urgency: '3', impact: '3', priority: '5 - Planning', status: 'ongoing', createdAt: new Date().toISOString(), completedAt: null });
         }
 
         async function handleToggleComplete(taskId, isCompleted) {
             const taskRef = doc(tasksCollectionRef, taskId);
-            
             if (isCompleted) {
                 const taskElement = document.querySelector(`li[data-id='${taskId}']`);
                 if (taskElement) {
-                    if (audioReady) {
-                        await Tone.start(); // Required by browsers
-                        synth.triggerAttackRelease("E5", "16n");
-                    }
+                    if (audioReady) { await Tone.start(); synth.triggerAttackRelease("E5", "16n"); }
                     taskElement.classList.add('completing');
-                    taskElement.addEventListener('animationend', () => {
-                        updateDoc(taskRef, { status: 'completed', completedAt: new Date().toISOString() });
-                    }, { once: true });
+                    taskElement.addEventListener('animationend', () => { updateDoc(taskRef, { status: 'completed', completedAt: new Date().toISOString() }); }, { once: true });
                 }
-            } else {
-                await updateDoc(taskRef, { status: 'ongoing', completedAt: null });
-            }
+            } else { await updateDoc(taskRef, { status: 'ongoing', completedAt: null }); }
         }
 
         async function handleUpdateTask(taskId, field, value) {
-            const task = localTasks.find(t => t.id === taskId);
-            if (!task) return;
-
+            const task = localTasks.find(t => t.id === taskId); if (!task) return;
             const updateData = { [field]: value };
-            
             if (field === 'urgency' || field === 'impact') {
                 const newUrgency = field === 'urgency' ? value : task.urgency;
                 const newImpact = field === 'impact' ? value : task.impact;
                 updateData.priority = priorityMatrix[`${newUrgency}-${newImpact}`]?.text || 'N/A';
             }
-
-            const taskRef = doc(tasksCollectionRef, taskId);
-            await updateDoc(taskRef, updateData);
+            await updateDoc(doc(tasksCollectionRef, taskId), updateData);
         }
 
         async function handleDeleteTask(taskId) {
-            if (confirm("Are you sure you want to delete this task permanently?")) {
-                 const taskRef = doc(tasksCollectionRef, taskId);
-                 await deleteDoc(taskRef);
+            if (confirm("Are you sure?")) { await deleteDoc(doc(tasksCollectionRef, taskId)); }
+        }
+        
+        async function handleGenerateSubtasks(btn, taskId, taskTitle) { /* AI logic here */ }
+
+        // --- Initial Load ---
+        async function main() {
+            if (!firebaseConfig.apiKey) {
+                welcomeScreen.innerHTML = `<h1 class="text-2xl font-bold text-red-600">Configuration Error</h1><p class="mt-4 text-gray-700">The Firebase configuration is missing. Please paste your firebaseConfig object into the index.html file.</p>`;
+                return;
+            }
+            app = initializeApp(firebaseConfig);
+            db = getFirestore(app);
+            auth = getAuth(app);
+            await signInAnonymously(auth);
+
+            loadChecklistBtn.addEventListener('click', handleLoadChecklist);
+            logoutBtn.addEventListener('click', handleLogout);
+
+            const savedChecklistId = localStorage.getItem('checklistId');
+            if (savedChecklistId) {
+                showApp(savedChecklistId);
+            } else {
+                welcomeScreen.classList.remove('hidden');
+                appScreen.classList.add('hidden');
             }
         }
 
-        initializeFirebase();
-
+        main();
     </script>
 </body>
 </html>

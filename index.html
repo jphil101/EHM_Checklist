@@ -28,6 +28,24 @@
         .task-item.completing {
             animation: complete-animation 0.6s ease-in-out forwards;
         }
+        /* Task rows: one line on desktop, two lines on phones */
+        .task-row {
+            display: grid;
+            grid-template-columns: 1.25rem 7rem 7rem 7rem minmax(0, 1fr) 2rem;
+            grid-template-areas: "chk urg imp pri title del";
+            gap: 0.75rem;
+            align-items: center;
+        }
+        .area-chk { grid-area: chk; } .area-urg { grid-area: urg; } .area-imp { grid-area: imp; }
+        .area-pri { grid-area: pri; } .area-title { grid-area: title; } .area-del { grid-area: del; }
+        @media (max-width: 640px) {
+            .task-row {
+                grid-template-columns: 1.25rem minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) 2rem;
+                grid-template-areas: "chk title title title del" ". urg imp pri pri";
+                row-gap: 0.5rem;
+            }
+            .task-header-row { display: none; }
+        }
     </style>
 </head>
 <body class="bg-gray-100 text-gray-800">
@@ -109,6 +127,12 @@
         // --- Firebase Initialization ---
         let app, db, auth, tasksCollectionRef;
         let localTasks = [];
+        let unsubscribeTasks = null;
+        let pendingFocusTaskId = null;
+
+        function escapeHtml(str) {
+            return String(str ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+        }
 
         // --- Tone.js Sound Setup ---
         let synth;
@@ -129,15 +153,21 @@
                 errorMessage.classList.remove('hidden');
                 return;
             }
+            errorMessage.classList.add('hidden');
             localStorage.setItem('checklistId', checklistId);
             showApp(checklistId);
         }
         
         function handleLogout() {
             localStorage.removeItem('checklistId');
+            // Stop listening to the old checklist, otherwise its tasks keep rendering into the next one
+            if (unsubscribeTasks) { unsubscribeTasks(); unsubscribeTasks = null; }
+            localTasks = [];
+            checklistNameInput.value = '';
             welcomeScreen.classList.remove('hidden');
             appScreen.classList.add('hidden');
             mainContentEl.innerHTML = ''; 
+            checklistNameInput.focus();
         }
 
         function showApp(checklistId) {
@@ -157,8 +187,8 @@
                         <svg class="toggle-arrow w-6 h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
                     </div>
                     <div id="ongoing-tasks-container" class="mt-2">
-                        <div class="flex items-center gap-3 px-3 py-2 text-sm font-semibold text-gray-500 border-b-2 border-gray-200">
-                            <div class="h-5 w-5 flex-shrink-0"></div><div class="flex-shrink-0 w-28">Urgency</div><div class="flex-shrink-0 w-28">Impact</div><div class="w-28 flex-shrink-0 text-center">Priority</div><div class="flex-grow">Task Title</div><div class="w-8 h-6 flex-shrink-0"></div>
+                        <div class="task-row task-header-row px-3 py-2 text-sm font-semibold text-gray-500 border-b-2 border-gray-200">
+                            <div class="area-chk"></div><div class="area-urg">Urgency</div><div class="area-imp">Impact</div><div class="area-pri text-center">Priority</div><div class="area-title">Task Title</div><div class="area-del"></div>
                         </div>
                         <ul id="ongoing-tasks-list" class="space-y-2 pt-2"></ul>
                         <button id="add-task-btn" class="mt-4 w-full bg-blue-600 text-white font-semibold py-3 px-4 rounded-lg shadow-md hover:bg-blue-700"> + Add New Task </button>
@@ -183,7 +213,8 @@
         function isSameDay(d1, d2) { return d1 && d2 && new Date(d1).toDateString() === new Date(d2).toDateString(); }
 
         function setupListeners() {
-            onSnapshot(query(tasksCollectionRef), (snapshot) => {
+            if (unsubscribeTasks) unsubscribeTasks();
+            unsubscribeTasks = onSnapshot(query(tasksCollectionRef), (snapshot) => {
                 const today = new Date();
                 localTasks = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
                     .filter(task => task.status === 'ongoing' || (task.status === 'completed' && isSameDay(task.completedAt, today)));
@@ -197,6 +228,13 @@
             const ongoingList = document.getElementById('ongoing-tasks-list');
             const completedList = document.getElementById('completed-tasks-list');
             if(!ongoingList || !completedList) return;
+
+            // Remember an in-progress title edit so a remote update doesn't wipe what the user is typing
+            const active = document.activeElement;
+            let editing = null;
+            if (active && active.classList.contains('task-title-input')) {
+                editing = { id: active.closest('li')?.dataset.id, value: active.value, start: active.selectionStart, end: active.selectionEnd };
+            }
 
             ongoingList.innerHTML = '';
             completedList.innerHTML = '';
@@ -215,31 +253,50 @@
 
             if (completedTasks.length === 0) { completedList.innerHTML = `<li class="text-center text-gray-500 py-4">No tasks completed today.</li>`; }
             else { completedTasks.forEach(task => completedList.appendChild(createTaskElement(task))); }
+
+            if (editing && editing.id) {
+                const input = document.querySelector(`li[data-id='${editing.id}'] .task-title-input`);
+                if (input) {
+                    input.value = editing.value;
+                    input.focus();
+                    try { input.setSelectionRange(editing.start, editing.end); } catch (_) {}
+                }
+            } else if (pendingFocusTaskId) {
+                const input = document.querySelector(`li[data-id='${pendingFocusTaskId}'] .task-title-input`);
+                if (input) { input.focus(); pendingFocusTaskId = null; }
+            }
         }
 
         function createTaskElement(task) {
             const li = document.createElement('li');
-            li.className = `task-item flex items-center gap-3 p-3 bg-white rounded-lg shadow-sm ${task.status === 'completed' ? 'opacity-70' : ''}`;
+            li.className = `task-item task-row p-3 bg-white rounded-lg shadow-sm ${task.status === 'completed' ? 'opacity-70' : ''}`;
             li.dataset.id = task.id;
             const priority = priorityMatrix[`${task.urgency}-${task.impact}`] || { text: 'N/A', color: 'text-gray-500' };
             li.innerHTML = `
-                <input type="checkbox" ${task.status === 'completed' ? 'checked' : ''} class="h-5 w-5 rounded border-gray-300 text-blue-600 cursor-pointer flex-shrink-0">
-                <div class="flex-shrink-0 w-28"><select class="urgency-select w-full bg-gray-50 border-gray-300 text-sm rounded-lg p-1.5" data-field="urgency"><option value="1" ${task.urgency == 1 ? 'selected' : ''}>High</option><option value="2" ${task.urgency == 2 ? 'selected' : ''}>Medium</option><option value="3" ${task.urgency == 3 ? 'selected' : ''}>Low</option></select></div>
-                <div class="flex-shrink-0 w-28"><select class="impact-select w-full bg-gray-50 border-gray-300 text-sm rounded-lg p-1.5" data-field="impact"><option value="1" ${task.impact == 1 ? 'selected' : ''}>High</option><option value="2" ${task.impact == 2 ? 'selected' : ''}>Medium</option><option value="3" ${task.impact == 3 ? 'selected' : ''}>Low</option></select></div>
-                <div class="priority-display font-semibold w-28 flex-shrink-0 text-center ${priority.color}">${priority.text}</div>
-                <input type="text" value="${task.title}" class="task-title-input flex-grow bg-transparent focus:bg-gray-100 rounded p-1.5 outline-none ${task.status === 'completed' ? 'line-through' : ''}" placeholder="Enter task title...">
-                <div class="flex-shrink-0 w-8 text-right">
-                    <button class="delete-btn text-gray-400 hover:text-red-500 p-0.5"><svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm4 0a1 1 0 012 0v6a1 1 0 11-2 0V8z" clip-rule="evenodd"></path></svg></button>
+                <input type="checkbox" ${task.status === 'completed' ? 'checked' : ''} aria-label="Mark task complete" class="area-chk h-5 w-5 rounded border-gray-300 text-blue-600 cursor-pointer">
+                <div class="area-urg"><select aria-label="Urgency" class="urgency-select w-full bg-gray-50 border-gray-300 text-sm rounded-lg p-1.5" data-field="urgency"><option value="1" ${task.urgency == 1 ? 'selected' : ''}>High</option><option value="2" ${task.urgency == 2 ? 'selected' : ''}>Medium</option><option value="3" ${task.urgency == 3 ? 'selected' : ''}>Low</option></select></div>
+                <div class="area-imp"><select aria-label="Impact" class="impact-select w-full bg-gray-50 border-gray-300 text-sm rounded-lg p-1.5" data-field="impact"><option value="1" ${task.impact == 1 ? 'selected' : ''}>High</option><option value="2" ${task.impact == 2 ? 'selected' : ''}>Medium</option><option value="3" ${task.impact == 3 ? 'selected' : ''}>Low</option></select></div>
+                <div class="area-pri priority-display font-semibold text-center ${priority.color}">${priority.text}</div>
+                <input type="text" value="${escapeHtml(task.title)}" aria-label="Task title" class="area-title task-title-input w-full min-w-0 bg-transparent focus:bg-gray-100 rounded p-1.5 outline-none ${task.status === 'completed' ? 'line-through' : ''}" placeholder="Enter task title...">
+                <div class="area-del text-right">
+                    <button class="delete-btn text-gray-400 hover:text-red-500 p-0.5" aria-label="Delete task" title="Delete task"><svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm4 0a1 1 0 012 0v6a1 1 0 11-2 0V8z" clip-rule="evenodd"></path></svg></button>
                 </div>`;
             li.querySelector('input[type="checkbox"]').addEventListener('change', (e) => handleToggleComplete(task.id, e.target.checked));
             li.querySelectorAll('select').forEach(sel => sel.addEventListener('change', (e) => handleUpdateTask(task.id, e.target.dataset.field, e.target.value)));
-            li.querySelector('.task-title-input').addEventListener('blur', (e) => handleUpdateTask(task.id, 'title', e.target.value));
+            const titleInput = li.querySelector('.task-title-input');
+            titleInput.addEventListener('blur', (e) => { if (e.target.value !== (task.title ?? '')) handleUpdateTask(task.id, 'title', e.target.value); });
+            titleInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') { e.preventDefault(); e.target.blur(); }
+                if (e.key === 'Escape') { e.target.value = task.title ?? ''; e.target.blur(); }
+            });
             li.querySelector('.delete-btn').addEventListener('click', () => handleDeleteTask(task.id));
             return li;
         }
 
         async function handleAddTask() {
-            await setDoc(doc(tasksCollectionRef), { title: '', urgency: '3', impact: '3', priority: '5 - Planning', status: 'ongoing', createdAt: new Date().toISOString(), completedAt: null });
+            const newRef = doc(tasksCollectionRef);
+            pendingFocusTaskId = newRef.id;
+            await setDoc(newRef, { title: '', urgency: '3', impact: '3', priority: '5 - Planning', status: 'ongoing', createdAt: new Date().toISOString(), completedAt: null });
         }
 
         async function handleToggleComplete(taskId, isCompleted) {
@@ -266,7 +323,8 @@
         }
 
         async function handleDeleteTask(taskId) {
-            if (confirm("Are you sure?")) { await deleteDoc(doc(tasksCollectionRef, taskId)); }
+            const title = localTasks.find(t => t.id === taskId)?.title;
+            if (confirm(title ? `Delete "${title}"?` : "Delete this untitled task?")) { await deleteDoc(doc(tasksCollectionRef, taskId)); }
         }
 
         function handleCsvImport(event) {
@@ -287,10 +345,14 @@
                 
                 try {
                     const batch = writeBatch(db);
-                    lines.forEach(line => {
-                        // Assuming the first column is the title. Handles commas in titles if quoted.
-                        const title = line.split(',')[0].trim().replace(/"/g, ''); 
+                    let imported = 0;
+                    lines.forEach((line, i) => {
+                        // First column is the title; a quoted first column may contain commas.
+                        const m = line.match(/^\s*"((?:[^"]|"")*)"/);
+                        const title = (m ? m[1].replace(/""/g, '"') : line.split(',')[0]).trim();
+                        if (i === 0 && /^(task\s*)?(title|name|task)s?$/i.test(title)) return; // header row
                         if (title) {
+                            imported++;
                             const newDocRef = doc(tasksCollectionRef);
                             batch.set(newDocRef, {
                                 title: title,
@@ -304,7 +366,7 @@
                         }
                     });
                     await batch.commit();
-                    importStatus.textContent = `Successfully imported ${lines.length} tasks!`;
+                    importStatus.textContent = imported ? `Successfully imported ${imported} task${imported === 1 ? '' : 's'}!` : 'No task titles found in the first column.';
                 } catch (error) {
                     console.error("Error importing tasks: ", error);
                     importStatus.textContent = 'Error during import. Check console.';
@@ -327,9 +389,19 @@
             app = initializeApp(firebaseConfig);
             db = getFirestore(app);
             auth = getAuth(app);
-            await signInAnonymously(auth);
+            try {
+                await signInAnonymously(auth);
+            } catch (err) {
+                console.error('Sign-in failed:', err);
+                errorMessage.textContent = "Couldn't connect to the sync server. Check your internet connection and reload the page.";
+                errorMessage.classList.remove('hidden');
+                loadChecklistBtn.disabled = true;
+                loadChecklistBtn.classList.add('opacity-50', 'cursor-not-allowed');
+                return;
+            }
 
             loadChecklistBtn.addEventListener('click', handleLoadChecklist);
+            checklistNameInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') handleLoadChecklist(); });
             logoutBtn.addEventListener('click', handleLogout);
             csvImportInput.addEventListener('change', handleCsvImport);
 
